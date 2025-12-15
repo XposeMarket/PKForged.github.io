@@ -1,0 +1,1052 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Wheel Vision Design</title>
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+    <!-- Add Line2, LineGeometry, LineMaterial as global for thick lines -->
+    <script type="module">
+        import { Line2 } from 'https://unpkg.com/three@0.160.0/examples/jsm/lines/Line2.js';
+        import { LineGeometry } from 'https://unpkg.com/three@0.160.0/examples/jsm/lines/LineGeometry.js';
+        import { LineMaterial } from 'https://unpkg.com/three@0.160.0/examples/jsm/lines/LineMaterial.js';
+        window.Line2 = Line2;
+        window.LineGeometry = LineGeometry;
+        window.LineMaterial = LineMaterial;
+    </script>
+    <style>
+        /* Light Theme for Studio Look */
+        body { margin: 0; overflow: hidden; font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f0f0f0; color: #333; }
+        /* Use grid so preview and controls are exact equal-width columns */
+        #app { display: grid; grid-template-columns: 1fr 1fr; gap: 36px; height: calc(100vh - 70px); width: 100vw; padding: 18px; box-sizing: border-box; }
+
+            /* Left Panel: 3D Canvas (now inside a visible preview panel) */
+                .preview-panel { display: flex; flex-direction: column; padding: 18px; background: #fff; border-radius: 12px; box-shadow: 0 12px 36px rgba(0,0,0,0.08); overflow: hidden; }
+                .preview-header { padding: 12px 16px; border-bottom: 1px solid #f0f0f0; display:flex;align-items:center;justify-content:space-between;background:linear-gradient(180deg, rgba(255,255,255,0.6), rgba(250,250,250,0.4));}
+                .preview-header h2{margin:0;font-size:1.1rem;color:#222;font-weight:700}
+                #canvas-container { flex: 1; min-height: 0; position: relative; background: linear-gradient(135deg, #f5f5f5 0%, #e8e8e8 50%, #f0f0f0 100%); cursor: move; }
+
+            /* Right Panel: Controls */
+            #controls { padding: 18px; background-color: #fff; overflow-y: auto; box-shadow: -5px 0 20px rgba(0,0,0,0.06); border-left: 1px solid #eee; z-index: 10; border-radius: 12px; }
+        
+        h1 { font-size: 1.8rem; margin: 0 0 20px 0; color: #222; font-weight: 800; letter-spacing: -1px;}
+        /* Header / Nav — match index page */
+        header nav { display:flex; gap:40px; justify-content:center; align-items:center; }
+        header nav a { text-decoration: none; color: #222; font-size: 1.15rem; font-weight: 600; padding: 8px 0; border-bottom: 2px solid transparent; transition: border 0.2s, color 0.2s; letter-spacing: 0.02em; }
+        header nav a:hover { border-bottom: 2px solid #ff6600; color: #ff6600; }
+        /* Mobile: hamburger and controls modal */
+        .hamburger { display: none; position: absolute; right: 88px; top: 54%; transform: translateY(-56%); width: 44px; height: 44px; border-radius: 8px; background: rgba(0,0,0,0.06); border: 0; cursor: pointer; align-items:center; justify-content:center; z-index:90; }
+        .hamburger .bar{position:relative;display:block;width:20px;height:2px;background:#666;border-radius:2px}
+        .hamburger .bar::before, .hamburger .bar::after{content:'';position:absolute;left:0;width:20px;height:2px;background:#666;border-radius:2px}
+        .hamburger .bar::before{top:-7px}
+        .hamburger .bar::after{top:7px}
+        .hamburger:focus{outline:none;box-shadow:0 0 0 3px rgba(102,102,102,0.12)}
+        @media (max-width: 820px) {
+            .hamburger{display:flex; right: 24px !important;}
+            header nav{display:none}
+        }
+        /* Mobile menu overlay */
+        .mobile-menu{position:fixed;inset:0;display:none;z-index:400;background:rgba(0,0,0,0.45);align-items:flex-start;justify-content:center;padding-top:72px}
+        .mobile-menu.open{display:flex}
+        .mobile-menu-inner{width:100%;max-width:420px;background:#fff;border-radius:0 0 12px 12px;padding:18px;box-shadow:0 20px 60px rgba(0,0,0,0.3);}
+        .mobile-menu-inner nav{display:flex;flex-direction:column;gap:10px}
+        .mobile-menu-inner a{display:block;padding:12px 10px;border-radius:8px;color:#222;text-decoration:none;font-weight:700}
+        .mobile-menu-inner a:hover{background:#f5f5f5;color:#ff6600}
+        .mobile-menu-close{position:absolute;top:14px;right:14px;background:#fff;border:0;border-radius:8px;padding:8px;cursor:pointer}
+        /* Preview header control button (three-line icon) */
+        .preview-controls-btn{display:none;background:transparent;border:0;cursor:pointer;padding:6px;border-radius:8px}
+        .preview-controls-btn .bar{display:block;width:18px;height:2px;background:#222;border-radius:2px;box-shadow:0 5px 0 #222,0 -5px 0 #222}
+
+        /* Controls modal */
+        .controls-modal{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,0.5);z-index:320;padding:18px}
+        .controls-modal.open{display:flex}
+        .controls-modal-inner{width:100%;max-width:420px;background:#fff;border-radius:12px;overflow:auto;max-height:92vh;box-shadow:0 20px 60px rgba(0,0,0,0.28)}
+        .controls-modal-close{display:block;background:#fff;border:0;padding:10px 14px;border-radius:0 0 12px 12px;text-align:right;cursor:pointer}
+
+        @media (max-width:920px){
+            header nav{display:none}
+            .hamburger{display:flex}
+            .preview-controls-btn{display:inline-flex}
+            /* layout stack: preview on top, controls hidden (moved to modal)
+                switch to single-column grid */
+            /* allow page scrolling on mobile so controls can scroll inside their panel */
+            body{overflow:auto}
+            #app{grid-template-columns:1fr; height:auto}
+            /* give preview a fixed viewport height so the 3D renderer keeps size */
+            .preview-panel{width:98vw;max-width:98vw;height:50vh;display:flex;flex-direction:column}
+            #canvas-container{height:calc(50vh - 56px);min-height:200px}
+            /* make controls scrollable within the viewport */
+            #controls{width:98vw;max-width:98vw;min-width:0;max-height:calc(100vh - 50vh - 90px);overflow:auto}
+        }
+        /* Mobile menu overlay */
+        .mobile-menu{position:fixed;inset:0;display:none;z-index:400;background:rgba(0,0,0,0.45);align-items:flex-start;justify-content:center;padding-top:72px}
+        .mobile-menu.open{display:flex}
+        .mobile-menu-inner{width:100%;max-width:420px;background:#fff;border-radius:0 0 12px 12px;padding:18px;box-shadow:0 20px 60px rgba(0,0,0,0.3);}
+        .mobile-menu-inner nav{display:flex;flex-direction:column;gap:10px}
+        .mobile-menu-inner a{display:block;padding:12px 10px;border-radius:8px;color:#222;text-decoration:none;font-weight:700}
+        .mobile-menu-inner a:hover{background:#f5f5f5;color:#ff6600}
+        .mobile-menu-close{position:absolute;top:14px;right:14px;background:#fff;border:0;border-radius:8px;padding:8px;cursor:pointer}
+        h3 { font-size: 0.9rem; margin-top: 25px; margin-bottom: 15px; color: #888; text-transform: uppercase; letter-spacing: 1px; font-weight: 700; border-bottom: 1px solid #eee; padding-bottom: 5px;}
+        
+        .control-group { margin-bottom: 18px; }
+        .sub-group { margin-left: 15px; padding-left: 10px; border-left: 3px solid #ff6600; display: none; background: #fafafa; padding: 10px; border-radius: 0 6px 6px 0;}
+        .show-sub { display: block; animation: fadeIn 0.3s ease-in; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; }}
+
+        label { display: flex; justify-content: space-between; font-size: 0.85rem; margin-bottom: 8px; color: #555; font-weight: 600;}
+        span.val-display { color: #ff6600; font-weight: 700; }
+
+        input[type=range] { width: 100%; cursor: pointer; accent-color: #ff6600; height: 6px; background: #ddd; border-radius: 5px; outline: none; -webkit-appearance: none; }
+        input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 16px; height: 16px; background: #ff6600; cursor: pointer; border-radius: 50%; }
+
+        select { width: 100%; padding: 10px; background: #f9f9f9; color: #333; border: 1px solid #ddd; border-radius: 6px; cursor: pointer; font-family: inherit; font-weight: 600;}
+        
+        .radio-group { display: flex; gap: 15px; margin-bottom: 10px; }
+        .radio-group label { font-weight: normal; align-items: center; justify-content: start; gap: 8px; cursor: pointer;}
+        input[type=checkbox] { accent-color: #ff6600; transform: scale(1.2); margin-right: 10px; cursor: pointer;}
+
+        /* Color Picker & Finishes */
+        .color-options { display: flex; align-items: center; gap: 15px; margin-top: 10px; padding: 5px; background: #f9f9f9; border-radius: 6px; border: 1px solid #ddd;}
+        input[type="color"] { width: 40px; height: 40px; border: none; cursor: pointer; background: none; padding: 0; border-radius: 4px;}
+        
+        .finish-btn { flex: 1; padding: 12px; background: #f0f0f0; border: 1px solid #ddd; color: #555; cursor: pointer; transition: 0.2s; font-weight: 600; border-radius: 6px;}
+        .finish-btn:hover { background: #e0e0e0; }
+        .finish-btn.active { background: #ff6600; color: white; border-color: #ff6600; box-shadow: 0 4px 10px rgba(255, 102, 0, 0.3);}
+        
+        #stats { font-size: 0.75rem; color: #999; margin-top: 40px; border-top: 1px solid #eee; padding-top: 15px; text-align: center;}
+    </style>
+</head>
+<body>
+
+    <header style="width:100vw;background:#fff;border-bottom:1px solid #eee;box-shadow:0 2px 12px rgba(0,0,0,0.04);display:flex;align-items:center;justify-content:center;padding:0 40px;height:70px;position:relative;z-index:20;overflow:visible;">
+    <img src="PKforged.jpg" alt="PK Forged Logo" style="height:48px;position:absolute;left:40px;top:50%;transform:translateY(-50%);">
+    <nav>
+        <a href="index.html">Home</a>
+        <a href="PKForged-3DDesigner.html" class="active">Wheel Designer</a>
+        <a href="gallery.html">Gallery</a>
+        <a href="contact.html">Contact</a>
+    </nav>
+    <button class="hamburger" id="hamburgerBtn" aria-label="Open menu"><span class="bar"></span></button>
+    </header>
+    <div class="mobile-menu" id="mobileMenu" aria-hidden="true">
+        <div class="mobile-menu-inner" role="dialog" aria-modal="true">
+            <button class="mobile-menu-close" id="mobileMenuClose">Close</button>
+            <nav id="mobileNav"></nav>
+        </div>
+    </div>
+<div id="app">
+    <div class="preview-panel">
+        <div class="preview-header"><h2>3D Preview</h2><button class="preview-controls-btn" id="openControlsBtn" aria-label="Open controls"><span class="bar"></span></button></div>
+        <div id="canvas-container"></div>
+    </div>
+
+    <div id="controls">
+        <h1>Wheel Vision Design</h1>
+        
+        <h3>Base Specs</h3>
+        
+        <div class="control-group">
+            <label>Diameter <span class="val-display" id="val-size">19"</span></label>
+            <input type="range" id="size" min="16" max="22" step="1" value="19">
+        </div>
+
+        <div class="control-group">
+             <label>Total Width <span class="val-display" id="val-width">9.5"</span></label>
+             <input type="range" id="width" min="7.5" max="11.5" step="0.5" value="9.5">
+        </div>
+
+        <div class="control-group">
+            <label>Construction Type</label>
+            <select id="construction">
+                <option value="mono" selected>Monoblock (1-Piece)</option>
+                <option value="2pc">2-Piece Welded</option>
+                <option value="3pc">3-Piece Modular</option>
+            </select>
+        </div>
+
+        <div class="control-group">
+            <label>Outer Lip Size <span class="val-display" id="val-lip">30%</span></label>
+            <input type="range" id="lipPercent" min="10" max="60" step="5" value="30">
+        </div>
+
+        <div class="control-group">
+            <label style="justify-content: start; cursor: pointer;">
+                <input type="checkbox" id="stepLip"> Enable Step-Lip
+            </label>
+        </div>
+
+        <div class="control-group">
+            <label>Offset (ET) <span class="val-display" id="val-offset">+0mm</span></label>
+            <input type="range" id="offset" min="-50" max="50" step="1" value="0">
+            <div style="font-size:0.7rem; color:#999; margin-top:2px;">Center cap depth vs barrel. Negative = deeper, Positive = pushed out</div>
+        </div>
+
+        <h3>Spoke Design</h3>
+
+        <div class="control-group">
+            <select id="spokeCount">
+                <option value="3">Tri-Spoke (3)</option>
+                <option value="4">4 Spoke</option>
+                <option value="5" selected>5 Spoke</option>
+                <option value="6">6 Spoke</option>
+                <option value="8">8 Spoke</option>
+                <option value="10">10 Spoke</option>
+                <option value="12">12 Spoke</option>
+            </select>
+        </div>
+
+        <div class="control-group">
+
+            <label>Spoke Thickness <span class="val-display" id="val-thickness">Med</span></label>
+            <input type="range" id="thickness" min="0.4" max="2.5" step="0.1" value="1.0">
+        </div>
+
+        <div class="control-group">
+            <label>Spoke Shape</label>
+            <select id="spokeShape">
+                <option value="tube">Classic Tube</option>
+                <option value="rect" selected>Flat Rectangle (rounded edges)</option>
+            </select>
+        </div>
+
+
+
+        <div class="control-group">
+            <label>Spoke Curve - Lateral <span class="val-display" id="val-lateral">None</span></label>
+            <input type="range" id="lateral" min="-15" max="15" step="1" value="0">
+             <div style="font-size:0.7rem; color:#999; margin-top:2px;">Left/Right spoke sweep</div>
+        </div>
+
+        <div class="control-group">
+            <label>Spoke Taper <span class="val-display" id="val-taper">Balanced</span></label>
+            <input type="range" id="taper" min="0" max="100" step="5" value="50">
+             <div style="font-size:0.7rem; color:#999; margin-top:2px;">0 = Thin center, 100 = Thick center</div>
+        </div>
+
+        <div class="control-group">
+            <label>Flare - Center <span class="val-display" id="val-flare-center">None</span></label>
+            <input type="range" id="flareCenter" min="0" max="100" step="5" value="0">
+             <div style="font-size:0.7rem; color:#999; margin-top:2px;">How spoke flares into center cap</div>
+        </div>
+
+        <div class="control-group">
+            <label>Flare - Rim End <span class="val-display" id="val-flare-end">None</span></label>
+            <input type="range" id="flareEnd" min="0" max="100" step="5" value="0">
+             <div style="font-size:0.7rem; color:#999; margin-top:2px;">How spoke flares into rim barrel</div>
+        </div>
+
+        <h3>Center Hub</h3>
+        <div class="control-group">
+            <label>Hub Style</label>
+            <div class="radio-group">
+                <label><input type="radio" name="hubStyle" value="integrated" checked> Integrated</label>
+                <label><input type="radio" name="hubStyle" value="floating"> Floating Cap</label>
+            </div>
+        </div>
+           <div class="control-group">
+               <label>Hub Size <span class="val-display" id="val-hubsize">Std</span></label>
+               <input type="range" id="hubSize" min="4.0" max="8.0" step="0.1" value="4.0">
+           </div>
+
+
+        <h3>Finishes</h3>
+        
+        <div class="control-group" style="display:flex; gap:10px;">
+            <button class="finish-btn active" id="btn-polished">Polished</button>
+            <button class="finish-btn" id="btn-chrome">Chrome</button>
+            <button class="finish-btn" id="btn-brushed">Brushed</button>
+            <button class="finish-btn" id="btn-matte">Matte Paint</button>
+        </div>
+
+        <div class="control-group">
+            <label>Face Color (for Paint/Brushed)</label>
+            <div class="color-options">
+                <input type="color" id="colorPicker" value="#333333">
+                <span style="font-size:0.85rem; color:#666;">Select Color</span>
+            </div>
+        </div>
+
+        <div id="stats">
+            Real-time Procedural Generation. <br>
+            Rotate: Left Click | Pan: Right Click | Zoom: Scroll
+        </div>
+    </div>
+</div>
+
+<!-- Mobile Menu Overlay -->
+<div id="mobileMenu" class="mobile-menu" aria-hidden="true">
+    <div class="mobile-menu-inner" role="dialog" aria-modal="true">
+        <button id="mobileMenuClose" class="mobile-menu-close" aria-label="Close menu">✕</button>
+        <nav>
+            <a href="index.html">Home</a>
+            <a href="PKForged-3DDesigner.html">Wheel Vision Design</a>
+            <a href="gallery.html">Gallery</a>
+            <a href="contact.html">Contact</a>
+        </nav>
+    </div>
+</div>
+
+<script type="module">
+        import { RGBELoader } from 'three/addons/loaders/RGBELoader.js';
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+    // --- 1. SETUP SCENE ---
+    const container = document.getElementById('canvas-container');
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0xffffff);
+
+    // --- HDRI ENVIRONMENT MAP FOR REALISTIC REFLECTIONS ---
+    // Uses a free bright studio HDRI from Polyhaven
+    new RGBELoader()
+        .setDataType(THREE.UnsignedByteType)
+        .load('https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/studio_small_09_1k.hdr', function (texture) {
+            texture.mapping = THREE.EquirectangularReflectionMapping;
+            scene.environment = texture;
+        });
+    
+    // Camera
+    const camera = new THREE.PerspectiveCamera(35, container.clientWidth / container.clientHeight, 0.1, 100);
+    camera.position.set(20, 16, -25); // 3/4 view with lip facing forward, more zoomed out
+
+    // Renderer
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+    renderer.setSize(container.clientWidth, container.clientHeight);
+    renderer.setPixelRatio(window.devicePixelRatio);
+
+// Mobile menu + controls modal behavior
+(function(){
+    const hamburger = document.getElementById('hamburgerBtn');
+    const mobileMenu = document.getElementById('mobileMenu');
+    const mobileClose = document.getElementById('mobileMenuClose');
+    const openControlsBtn = document.getElementById('openControlsBtn');
+    const controlsModal = document.createElement('div');
+    controlsModal.className = 'controls-modal';
+    controlsModal.innerHTML = '<div class="controls-modal-inner" id="controlsModalInner"></div>';
+    document.body.appendChild(controlsModal);
+
+    function openMenu(){ mobileMenu.classList.add('open'); mobileMenu.setAttribute('aria-hidden','false'); }
+    function closeMenu(){ mobileMenu.classList.remove('open'); mobileMenu.setAttribute('aria-hidden','true'); }
+
+    if(hamburger){ hamburger.addEventListener('click', (e)=>{ e.stopPropagation(); openMenu(); }); }
+    if(mobileClose){ mobileClose.addEventListener('click', (e)=>{ e.stopPropagation(); closeMenu(); }); }
+    if(mobileMenu){ mobileMenu.addEventListener('click', (e)=>{ if(e.target===mobileMenu) closeMenu(); }); }
+    document.addEventListener('keydown', (e)=>{ if(e.key==='Escape'){ closeMenu(); controlsModal.classList.remove('open'); } });
+
+    // Controls modal: copy the #controls into modal on small screens when requested
+    const controlsEl = document.getElementById('controls');
+    const controlsModalInner = document.getElementById('controlsModalInner');
+    const controlsCloseBtn = document.createElement('button');
+    controlsCloseBtn.className = 'controls-modal-close';
+    controlsCloseBtn.textContent = 'Close';
+    controlsCloseBtn.addEventListener('click', ()=>{ controlsModal.classList.remove('open'); });
+
+    function openControlsModal(){
+        if(!controlsEl) return;
+        // move (or clone) controls into modal inner for mobile; we'll clone to keep original in DOM
+        controlsModalInner.innerHTML = '';
+        const clone = controlsEl.cloneNode(true);
+        controlsModalInner.appendChild(clone);
+        controlsModalInner.appendChild(controlsCloseBtn);
+        controlsModal.classList.add('open');
+    }
+
+    if(openControlsBtn){ openControlsBtn.addEventListener('click', (e)=>{ e.stopPropagation(); openControlsModal(); }); }
+    // close modal when clicking backdrop
+    controlsModal.addEventListener('click', (e)=>{ if(e.target===controlsModal) controlsModal.classList.remove('open'); });
+})();
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.8;
+    renderer.shadowMap.enabled = true;
+    container.appendChild(renderer.domElement);
+
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.05;
+    controls.target.set(0, 0, 0); // Force camera to look at center
+
+    // LIGHTING - Added directly to main scene
+    const light1 = new THREE.DirectionalLight(0xffffff, 2.2);
+    light1.position.set(12, 14, 8);  // Key light - strong front upper right
+    light1.castShadow = true;
+    light1.shadow.mapSize.width = 2048;
+    light1.shadow.mapSize.height = 2048;
+    scene.add(light1);
+    
+    const light2 = new THREE.DirectionalLight(0xe0e8ff, 0.8);  // Cool blue fill (shadow filler)
+    light2.position.set(-14, 4, 3);  // Strong fill from opposite side
+    scene.add(light2);
+    
+    const light3 = new THREE.DirectionalLight(0xfff5e6, 1.0);  // Warm rim/back light
+    light3.position.set(-3, 10, -14);  // Back light - creates rim separation
+    scene.add(light3);
+    
+    const light4 = new THREE.DirectionalLight(0xffffff, 0.7);  // Top ambient key
+    light4.position.set(0, 18, 2);
+    scene.add(light4);
+    
+    // High ambient for that bright studio look
+    scene.add(new THREE.AmbientLight(0xffffff, 0.75));
+
+    // --- 2. MATERIALS INITIALIZATION ---
+    // We define these globally so they exist before any render loop
+    let currentFaceMaterial = new THREE.MeshStandardMaterial({
+        color: 0xe8e8e8, metalness: 0.95, roughness: 0.12, envMapIntensity: 1.8, side: THREE.DoubleSide
+    });
+    // Spokes and center caps material - this one responds to color picker
+    let spokesMaterial = new THREE.MeshStandardMaterial({
+        color: 0xe8e8e8, metalness: 0.95, roughness: 0.12, envMapIntensity: 1.8, side: THREE.DoubleSide
+    });
+    const barrelMaterial = new THREE.MeshStandardMaterial({
+        color: 0xffffff, metalness: 0.8, roughness: 0.3, envMapIntensity: 0.8, side: THREE.DoubleSide
+    });
+    // Lip and step lip always stay grey
+    const lipMaterial = new THREE.MeshStandardMaterial({
+        color: 0x333333, metalness: 1.0, roughness: 0.08, envMapIntensity: 1.3, side: THREE.DoubleSide
+    });
+    const tireMaterial = new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.8, metalness: 0.1 });
+    const boltMaterial = new THREE.MeshStandardMaterial({ color: 0xdddddd, roughness: 0.2, metalness: 1.0 });
+
+    // --- 3. GEOMETRY LOGIC ---
+    const wheelGroup = new THREE.Group();
+    scene.add(wheelGroup);
+
+    const rimGroup = new THREE.Group();
+    const faceGroup = new THREE.Group();
+    const hardwareGroup = new THREE.Group();
+    wheelGroup.add(rimGroup, faceGroup, hardwareGroup);
+
+    function createRimAndTire(radius, totalWidth, isStepLip, constructionType, lipPercent) {
+        rimGroup.clear();
+        hardwareGroup.clear();
+
+
+        const widthZ = totalWidth;
+        const splitRatio = lipPercent / 100;
+        // OUTER (front) and INNER (back) lips are both locked at minimum (10%)
+        const lockedLipPercent = 0.10;
+        const lockedLipWidthZ = widthZ * lockedLipPercent;
+        const barrelWidthZ = widthZ - 2 * lockedLipWidthZ;
+        const rimZOffset = -widthZ / 2;
+
+
+
+        // --- LatheGeometry profile for seamless barrel and lips with rounded edges ---
+        // Front lip is always locked to main rim radius (never follows spokes/black line)
+        let frontLipRadius = radius;
+        if (isStepLip) frontLipRadius = radius * 1.07;
+        const fillet = Math.max(0.12, radius * 0.025);
+        const lipRound = Math.max(0.18, radius * 0.035);
+        // Only the inner lip (hardware seat) follows the spoke/black line radius and Z (sliderZ)
+        const frontLipDepth = lockedLipWidthZ;
+        const backLipDepth = lockedLipWidthZ;
+        const sliderZ = rimZOffset + (widthZ * (lipPercent / 100));
+        // Calculate black line and spoke end radius for hardware seat (inner lip)
+        const spokeLipRound = lipRound;
+        const blackLineRadius = frontLipRadius + spokeLipRound - 0.40;
+        const spokeEndRadius = blackLineRadius - 0.12;
+
+        // Profile: Start at the very back (inner), create rear lip, barrel, add a new inward hardware seat (inner lip, as a ledge on the inside), then front lip
+        const profile = [];
+        // 1. Start at the very back (inner barrel wall, main rim radius)
+        profile.push(new THREE.Vector2(radius - fillet, rimZOffset + widthZ));
+        // 2. Rear lip round (curve out)
+        profile.push(new THREE.Vector2(radius, rimZOffset + widthZ - backLipDepth * 0.25));
+        // 3. Rear lip face (short vertical)
+        profile.push(new THREE.Vector2(radius, rimZOffset + widthZ - backLipDepth));
+        // 4. Rear lip fillet (curve in)
+        profile.push(new THREE.Vector2(radius - fillet, rimZOffset + widthZ - backLipDepth));
+        // 5. Barrel wall (vertical drop, main rim radius) up to hardware seat Z
+        profile.push(new THREE.Vector2(radius - fillet, sliderZ + 0.18));
+        // 6. NEW: Hardware seat/inner lip as a true lip shape at sliderZ, matching the outer lips, but INWARD (toward wheel center)
+        // Start barrel wall (main rim radius) up to just before hardware seat
+        profile.push(new THREE.Vector2(radius - fillet, sliderZ + 0.18));
+        // Hardware seat lip round (curve INWARD, toward center)
+        profile.push(new THREE.Vector2(spokeEndRadius - lipRound, sliderZ + 0.12));
+        // Hardware seat lip face (short vertical, INWARD)
+        profile.push(new THREE.Vector2(spokeEndRadius - lipRound, sliderZ));
+        // Hardware seat lip fillet (curve back OUT to main rim radius)
+        profile.push(new THREE.Vector2(spokeEndRadius, sliderZ));
+        // Resume barrel wall (main rim radius) after hardware seat
+        profile.push(new THREE.Vector2(radius - fillet, rimZOffset + frontLipDepth + lipRound));
+        // 7. Barrel wall (vertical drop, main rim radius) resumes after hardware seat
+        profile.push(new THREE.Vector2(radius - fillet, rimZOffset + frontLipDepth + lipRound));
+        // 8. Barrel to front lip fillet (curve up, main rim radius)
+        profile.push(new THREE.Vector2(radius, rimZOffset + frontLipDepth + lipRound));
+        // 9. Front lip wall (vertical drop) - front lip locked at 10% (main rim radius)
+        profile.push(new THREE.Vector2(frontLipRadius, rimZOffset + frontLipDepth + lipRound));
+        // 10. Front lip round (curve out, main rim radius)
+        profile.push(new THREE.Vector2(frontLipRadius + lipRound, rimZOffset + frontLipDepth));
+        // 11. Front lip face (short vertical, main rim radius)
+        profile.push(new THREE.Vector2(frontLipRadius + lipRound, rimZOffset));
+        // 12. Front lip fillet (curve in, main rim radius)
+        profile.push(new THREE.Vector2(frontLipRadius, rimZOffset));
+        // 13. Barrel wall (vertical up, closing profile, main rim radius)
+        profile.push(new THREE.Vector2(radius, rimZOffset + widthZ * 0.05));
+        // 14. Back to start (close profile, main rim radius)
+        profile.push(new THREE.Vector2(radius - fillet, rimZOffset + widthZ * 0.05));
+
+        // Create LatheGeometry
+        const latheGeo = new THREE.LatheGeometry(profile, 96);
+        const latheMesh = new THREE.Mesh(latheGeo, barrelMaterial);
+        latheMesh.rotation.x = Math.PI / 2;
+        rimGroup.add(latheMesh);
+
+        // --- 3. Bolts ---
+        if(constructionType !== 'mono') {
+            const boltCount = 30;
+            // Make hardware bolts sit flush and slightly inside the inner lip (hardware seat)
+            const boltRadius = spokeEndRadius - 0.10; // Slightly smaller than the lip's edge
+            const boltGeo = new THREE.CylinderGeometry(0.12, 0.12, 0.2, 12);
+            for(let i=0; i<boltCount; i++){
+                const angle = (i/boltCount) * Math.PI * 2;
+                const bolt = new THREE.Mesh(boltGeo, boltMaterial);
+                bolt.rotation.x = Math.PI/2;
+                // place bolts just inside the hardware seat lip
+                bolt.position.set(Math.cos(angle)*boltRadius, Math.sin(angle)*boltRadius, sliderZ);
+                hardwareGroup.add(bolt);
+            }
+        }
+
+        // 4. Tire (removed for cleaner render)
+
+        // --- Add a black line just inside the outermost edge of the front lip ---
+        // Make the black line radius smaller in diameter (sits inside the lip, not on the edge)
+        const blackLineSegments = 128;
+        const blackLinePoints = [];
+        for (let i = 0; i <= blackLineSegments; i++) {
+            const theta = (i / blackLineSegments) * Math.PI * 2;
+            blackLinePoints.push(new THREE.Vector3(
+                Math.cos(theta) * blackLineRadius,
+                Math.sin(theta) * blackLineRadius,
+                sliderZ
+            ));
+        }
+        const blackLineGeometry = new THREE.BufferGeometry().setFromPoints(blackLinePoints);
+        // Use Line2 for true thick lines if available, else fallback
+        let thickLine;
+        if (window.Line2 && window.LineGeometry && window.LineMaterial) {
+            // Use Line2 for thick line
+            const thickLineGeometry = new window.LineGeometry();
+            const positions = blackLinePoints.flatMap(p => [p.x, p.y, p.z]);
+            thickLineGeometry.setPositions(positions);
+            // Make the line much thicker for a bold look
+            const thickLineMaterial = new window.LineMaterial({ color: 0x000000, linewidth: 0.18, worldUnits: true });
+            thickLine = new window.Line2(thickLineGeometry, thickLineMaterial);
+            thickLine.computeLineDistances();
+            thickLine.material.resolution.set(window.innerWidth, window.innerHeight);
+            // Update resolution on window resize for correct thickness
+            window.addEventListener('resize', () => {
+                if (thickLine && thickLine.material && thickLine.material.resolution) {
+                    thickLine.material.resolution.set(window.innerWidth, window.innerHeight);
+                }
+            });
+        } else {
+            // fallback to LineBasicMaterial (not as thick)
+            const blackLineMaterial = new THREE.LineBasicMaterial({ color: 0x000000, linewidth: 32 });
+            thickLine = new THREE.Line(blackLineGeometry, blackLineMaterial);
+        }
+        rimGroup.add(thickLine);
+    }
+
+    function createSpokesAndHub(config) {
+        faceGroup.clear();
+        const { count, rimRadius, thickness, offsetZ, lateralForce, hubSize, hubStyle, isStepLip, taperPercent, lipConcavity, wheelWidth, spokeShape, flareCenter, flareEnd } = config;
+
+        // Calculate hardware Z position (where bolts/spokes end are)
+        const widthZ = wheelWidth;
+        const rimZOffset = -widthZ / 2;
+        // hardwareZ should be at the black line (moves with slider)
+        // Match the black line radius exactly so spokes terminate at the black line, not outside
+        const spokeLipRound = Math.max(0.18, rimRadius * 0.035);
+        const spokeFrontLipRadius = isStepLip ? rimRadius * 1.07 : rimRadius;
+        // Use the same offset as the black line in createRimAndTire, but make spokes stop just before the black line
+        const blackLineRadius = spokeFrontLipRadius + spokeLipRound - 0.40;
+        const spokeEndRadius = blackLineRadius - 0.12; // Give spokes even more space from the black line
+        const sliderRadius = spokeEndRadius;
+        const sliderZ = rimZOffset + (widthZ * (lipConcavity / 100));
+        const hardwareZ = sliderZ;
+
+        // Calculate concavity from lip percentage (10-60%) -> concave depth
+        // Lower lip % = more concave, higher lip % = less concave
+        const concavityZ = ((100 - lipConcavity) / 50) * 2.0;
+
+        // Effective radius connection point - spokes always reach here (black line)
+        // Clamp spoke endpoint so it never exceeds the rim radius minus a small constant margin
+        const rimMargin = 0.18; // constant, so thick spokes stay long
+        let maxSpokeRadius = rimRadius - rimMargin;
+
+        // If flaring the end, ensure the outermost edge of the spoke stays inside the rim
+        let flareEndScale = 1;
+        if (typeof flareEnd !== 'undefined') {
+            flareEndScale = 1 + (flareEnd / 100);
+        }
+        // For rectangle spokes, the widest part is half the width at the end
+        let spokeHalfWidth = 0;
+        if (spokeShape === 'rect') {
+            const rectWidth = thickness * 0.38 * flareEndScale;
+            spokeHalfWidth = rectWidth / 2;
+            maxSpokeRadius = rimRadius - rimMargin - spokeHalfWidth;
+        }
+        const connectRadius = Math.min(sliderRadius, maxSpokeRadius);
+        const actualHubRadius = hubSize / 2;
+
+        // --- Center Cap / Hub ---
+        if(hubStyle === 'floating') {
+            // Floating cap: keep as default
+            const capGeo = new THREE.CylinderGeometry(actualHubRadius * 1.3, actualHubRadius * 1.3, 0.25, 64);
+            const capMesh = new THREE.Mesh(capGeo, spokesMaterial);
+            capMesh.rotation.x = Math.PI / 2;
+            capMesh.position.z = offsetZ + 0.2; 
+            faceGroup.add(capMesh);
+        } else {
+            // Integrated cap: smooth conical flare to meet spoke ends
+            // Profile for LatheGeometry: dome/cone from cap to spoke base
+            // Clamp flare so it never exceeds the rim radius minus a margin
+            let flareOuterRadius = actualHubRadius * 0.9 + (thickness * 0.6);
+            flareOuterRadius = Math.min(flareOuterRadius, rimRadius - rimMargin);
+            const flareInnerRadius = actualHubRadius * 0.95;
+            // Make the flare height and blend distance increase as the hub size increases
+            const hubScale = Math.max(1, (actualHubRadius * 2) / 4.0); // 4.0 is the min hub size
+            const flareHeight = (0.18 + thickness * 0.18) * hubScale * 0.9;
+            const blendFrac = 0.18 + 0.32 * (hubScale - 1) / 2; // blend more as hub gets bigger
+            // Lathe profile: from center cap up to outer radius, with a smooth curve
+            const flareProfile = [
+                new THREE.Vector2(flareInnerRadius, offsetZ + 0.01),
+                new THREE.Vector2(flareInnerRadius + (flareOuterRadius-flareInnerRadius)*blendFrac, offsetZ + 0.01 + flareHeight*0.35),
+                new THREE.Vector2(flareOuterRadius, offsetZ + 0.01 + flareHeight)
+            ];
+            const flareGeo = new THREE.LatheGeometry(flareProfile, 64);
+            const flareMesh = new THREE.Mesh(flareGeo, spokesMaterial);
+            flareMesh.rotation.x = Math.PI / 2;
+            faceGroup.add(flareMesh);
+            // Add a small center cap disk for visual closure
+            const capGeo = new THREE.CylinderGeometry(actualHubRadius * 0.95, actualHubRadius * 0.95, 0.04, 48);
+            const capMesh = new THREE.Mesh(capGeo, spokesMaterial);
+            capMesh.rotation.x = Math.PI / 2;
+            capMesh.position.z = offsetZ + 0.03;
+            faceGroup.add(capMesh);
+        }
+
+        // --- Spokes ---
+        for (let i = 0; i < count; i++) {
+            const angle = (i / count) * Math.PI * 2;
+            // Hub start point - AFFECTED BY OFFSET (center moves in/out)
+            const startRadius = actualHubRadius * 0.9; 
+            const vecA = new THREE.Vector3(Math.cos(angle)*startRadius, Math.sin(angle)*startRadius, offsetZ);
+            // Rim end point - STAYS AT HARDWARE Z (barrel position where bolts are)
+            const vecC = new THREE.Vector3(Math.cos(angle)*connectRadius, Math.sin(angle)*connectRadius, hardwareZ);
+            // Midpoint with lateral bend (only the midpoint is offset, ends remain flush)
+            const vecB = new THREE.Vector3().addVectors(vecA, vecC).multiplyScalar(0.5);
+            // Lateral bend (left/right sweep) - only affects the midpoint
+            const lateralDir = new THREE.Vector3(-Math.sin(angle), Math.cos(angle), 0);
+            vecB.add(lateralDir.multiplyScalar(lateralForce));
+            // Taper: 0 = thin at center, 100 = thick at center
+            const centerThickMult = 0.3 + (taperPercent / 100) * 0.7; // 0.3 to 1.0
+            const barrelThickMult = 1.0 - (taperPercent / 100) * 0.3;  // 1.0 to 0.7
+            // Use a cubic Bezier curve so the tangents at the ends always point directly at the center cap and rim
+            // Control points: vecA (start), ctrlA, ctrlB, vecC (end)
+            // ctrlA is a point a short distance from vecA toward vecB
+            // ctrlB is a point a short distance from vecC toward vecB
+            const ctrlA = vecA.clone().lerp(vecB, 0.35);
+            const ctrlB = vecC.clone().lerp(vecB, 0.35);
+            const path = new THREE.CubicBezierCurve3(vecA, ctrlA, ctrlB, vecC);
+
+            let spokeMesh;
+            if (spokeShape === 'rect') {
+                // Flat rectangle (rounded edge) spoke
+                // We'll extrude a rounded rectangle shape along the path
+                const rectWidth = thickness * 0.38;  // width along Y (thin edge)
+                const rectHeight = thickness * 1.1;  // height along X (wide flat face)
+                const rectRadius = rectWidth * 0.45;
+                // Create a rounded rectangle shape with width along Y and height along X
+                const baseShape = new THREE.Shape();
+                baseShape.absarc(-rectHeight/2 + rectRadius, -rectWidth/2 + rectRadius, rectRadius, Math.PI, Math.PI*1.5, false);
+                baseShape.lineTo(rectHeight/2 - rectRadius, -rectWidth/2);
+                baseShape.absarc(rectHeight/2 - rectRadius, -rectWidth/2 + rectRadius, rectRadius, Math.PI*1.5, 0, false);
+                baseShape.lineTo(rectHeight/2, rectWidth/2 - rectRadius);
+                baseShape.absarc(rectHeight/2 - rectRadius, rectWidth/2 - rectRadius, rectRadius, 0, Math.PI*0.5, false);
+                baseShape.lineTo(-rectHeight/2 + rectRadius, rectWidth/2);
+                baseShape.absarc(-rectHeight/2 + rectRadius, rectWidth/2 - rectRadius, rectRadius, Math.PI*0.5, Math.PI, false);
+                baseShape.lineTo(-rectHeight/2, -rectWidth/2 + rectRadius);
+                
+                const shape = baseShape;
+                
+                // Create tapered rectangular spoke using custom geometry
+                const rectGeo = createTaperedRectangle(path, shape, 20, centerThickMult, barrelThickMult, flareCenter, flareEnd);
+                spokeMesh = new THREE.Mesh(rectGeo, spokesMaterial);
+            } else {
+                // Classic tube
+                const tubeGeo = createTaperedTube(path, 20, thickness/2, centerThickMult, barrelThickMult, 16);
+                spokeMesh = new THREE.Mesh(tubeGeo, spokesMaterial);
+            }
+            faceGroup.add(spokeMesh);
+
+            // Only add the round spoke-to-barrel connector for tube spokes
+            if (spokeShape !== 'rect') {
+                const connectorGeo = new THREE.CylinderGeometry(thickness * 0.4, thickness * 0.5, 0.15, 12);
+                const connector = new THREE.Mesh(connectorGeo, spokesMaterial);
+                connector.rotation.x = Math.PI / 2;
+                connector.position.set(
+                    Math.cos(angle) * connectRadius, 
+                    Math.sin(angle) * connectRadius, 
+                    offsetZ
+                );
+                connector.rotation.z = angle + Math.PI / 2;
+                faceGroup.add(connector);
+            }
+        }
+    }
+
+
+    // Helper function to create a tapered rectangular spoke geometry
+    function createTaperedRectangle(curve, baseShape, segments, startScale, endScale, flareCenter = 0, flareEnd = 0) {
+        const geometry = new THREE.BufferGeometry();
+        const vertices = [];
+        const indices = [];
+        
+        // Get the base shape points
+        const shapePoints = baseShape.getPoints();
+        
+        // Get points along the curve
+        const pathPoints = curve.getPoints(segments);
+        const frames = [];
+        
+        // Compute Frenet-Serret frame for each point
+        for (let i = 0; i < pathPoints.length; i++) {
+            let tangent;
+            
+            if (i === 0) {
+                tangent = pathPoints[1].clone().sub(pathPoints[0]).normalize();
+            } else if (i === pathPoints.length - 1) {
+                tangent = pathPoints[i].clone().sub(pathPoints[i - 1]).normalize();
+            } else {
+                tangent = pathPoints[i + 1].clone().sub(pathPoints[i - 1]).normalize();
+            }
+            
+            // Use a simple perpendicular vector
+            let arbitrary = new THREE.Vector3(0, 1, 0);
+            if (Math.abs(tangent.dot(arbitrary)) > 0.9) {
+                arbitrary = new THREE.Vector3(1, 0, 0);
+            }
+            
+            const normal = new THREE.Vector3().crossVectors(arbitrary, tangent).normalize();
+            const binormal = new THREE.Vector3().crossVectors(tangent, normal).normalize();
+            
+            frames.push({ tangent, normal, binormal });
+        }
+        
+        // Generate vertices with taper and flare
+        for (let i = 0; i < pathPoints.length; i++) {
+            const pathPoint = pathPoints[i];
+            const frame = frames[i];
+            
+            // Interpolate scale along the path for taper effect
+            const t = i / (pathPoints.length - 1);
+            const currentScale = THREE.MathUtils.lerp(startScale, endScale, t);
+            
+            // Calculate flare multiplier - applies to BOTH dimensions for overall thickness increase
+            let flareScale = 1.0;
+            
+            // Center flare - affects first 15% of spoke, more aggressive
+            if (flareCenter > 0 && t < 0.15) {
+                const centerT = 1.0 - (t / 0.15); // 1 at hub, 0 at 15% mark
+                const smoothT = centerT * centerT * (3 - 2 * centerT);
+                flareScale += smoothT * (flareCenter / 100) * 3.0; // Much more pronounced
+            }
+            
+            // End flare - affects last 15% of spoke, more aggressive
+            if (flareEnd > 0 && t > 0.85) {
+                const endT = (t - 0.85) / 0.15; // 0 at 85% mark, 1 at rim
+                const smoothT = endT * endT * (3 - 2 * endT);
+                flareScale += smoothT * (flareEnd / 100) * 3.0; // Much more pronounced
+            }
+            
+            for (let j = 0; j < shapePoints.length; j++) {
+                const shapePoint = shapePoints[j];
+                
+                // Scale the shape point
+                // Both X and Y get taper AND flare (entire spoke gets thicker at ends)
+                const scaledX = shapePoint.x * currentScale * flareScale;
+                const scaledY = shapePoint.y * currentScale * flareScale;
+                
+                // Transform to 3D along the curve
+                const vertex = pathPoint.clone()
+                    .addScaledVector(frame.normal, scaledY)
+                    .addScaledVector(frame.binormal, scaledX);
+                
+                vertices.push(vertex.x, vertex.y, vertex.z);
+            }
+        }
+        
+        // Generate indices
+        for (let i = 0; i < segments; i++) {
+            for (let j = 0; j < shapePoints.length; j++) {
+                const a = i * shapePoints.length + j;
+                const b = ((i + 1) % pathPoints.length) * shapePoints.length + j;
+                const c = ((i + 1) % pathPoints.length) * shapePoints.length + ((j + 1) % shapePoints.length);
+                const d = i * shapePoints.length + ((j + 1) % shapePoints.length);
+                
+                indices.push(a, b, d);
+                indices.push(b, c, d);
+            }
+        }
+        
+        geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(vertices), 3));
+        geometry.setIndex(new THREE.BufferAttribute(new Uint32Array(indices), 1));
+        geometry.computeVertexNormals();
+        
+        return geometry;
+    }
+
+    // Helper function to create a properly tapered tube geometry
+    function createTaperedTube(curve, tubularSegments, radius, radiusStart, radiusEnd, radialSegments) {
+        const geometry = new THREE.BufferGeometry();
+        const vertices = [];
+        const indices = [];
+
+        // Get points along the curve
+        const points = curve.getPoints(tubularSegments);
+        const frames = [];
+
+        // Compute Frenet-Serret frame for each point
+        for (let i = 0; i < points.length; i++) {
+            let tangent, normal, binormal;
+
+            if (i === 0) {
+                tangent = points[1].clone().sub(points[0]).normalize();
+            } else if (i === points.length - 1) {
+                tangent = points[i].clone().sub(points[i - 1]).normalize();
+            } else {
+                tangent = points[i + 1].clone().sub(points[i - 1]).normalize();
+            }
+
+            // Use a simple perpendicular vector
+            let arbitrary = new THREE.Vector3(0, 1, 0);
+            if (Math.abs(tangent.dot(arbitrary)) > 0.9) {
+                arbitrary = new THREE.Vector3(1, 0, 0);
+            }
+
+            normal = new THREE.Vector3().crossVectors(arbitrary, tangent).normalize();
+            binormal = new THREE.Vector3().crossVectors(tangent, normal).normalize();
+
+            frames.push({ tangent, normal, binormal });
+        }
+
+        // Generate vertices
+        for (let i = 0; i < points.length; i++) {
+            const point = points[i];
+            const frame = frames[i];
+            
+            // Interpolate radius along the path - this is where taper happens!
+            const t = i / (points.length - 1);
+            const currentRadius = THREE.MathUtils.lerp(radiusStart, radiusEnd, t) * radius;
+
+            for (let j = 0; j < radialSegments; j++) {
+                const angle = (j / radialSegments) * Math.PI * 2;
+                const cos = Math.cos(angle);
+                const sin = Math.sin(angle);
+
+                // Vertex position: point + (normal * cos + binormal * sin) * radius
+                const vertex = point.clone()
+                    .addScaledVector(frame.normal, cos * currentRadius)
+                    .addScaledVector(frame.binormal, sin * currentRadius);
+
+                vertices.push(vertex.x, vertex.y, vertex.z);
+            }
+        }
+
+        // Generate indices
+        for (let i = 0; i < tubularSegments; i++) {
+            for (let j = 0; j < radialSegments; j++) {
+                const a = i * radialSegments + j;
+                const b = ((i + 1) % points.length) * radialSegments + j;
+                const c = ((i + 1) % points.length) * radialSegments + (j + 1) % radialSegments;
+                const d = i * radialSegments + (j + 1) % radialSegments;
+
+                indices.push(a, b, d);
+                indices.push(b, c, d);
+            }
+        }
+
+        geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(vertices), 3));
+        geometry.setIndex(new THREE.BufferAttribute(new Uint32Array(indices), 1));
+        geometry.computeVertexNormals();
+
+        return geometry;
+    }
+
+    // --- 4. UPDATE ORCHESTRATOR ---
+    function updateWheel() {
+        const sizeInch = parseFloat(document.getElementById('size').value);
+        const widthInch = parseFloat(document.getElementById('width').value);
+        const construction = document.getElementById('construction').value;
+        const lipPercent = parseInt(document.getElementById('lipPercent').value);
+        const isStepLip = document.getElementById('stepLip').checked;
+        const offsetMm = parseInt(document.getElementById('offset').value);
+        const offsetZ = offsetMm * 0.04; // Scale factor - controls center cap depth vs barrel
+        const spokeCount = parseInt(document.getElementById('spokeCount').value);
+        const thicknessVal = parseFloat(document.getElementById('thickness').value);
+        const lateralVal = parseInt(document.getElementById('lateral').value);
+        const lateralForce = lateralVal * -0.15;
+        const taperVal = parseInt(document.getElementById('taper').value);
+        const flareCenterVal = parseInt(document.getElementById('flareCenter').value);
+        const flareEndVal = parseInt(document.getElementById('flareEnd').value);
+        const hubSizeVal = parseFloat(document.getElementById('hubSize').value);
+        const hubStyleVal = document.querySelector('input[name="hubStyle"]:checked').value;
+
+        // UI Updates
+        const stepLipSize = isStepLip ? sizeInch + 1 : sizeInch;
+        const stepLipText = isStepLip ? ` (Step lip to ${stepLipSize}"` + ')' : '';
+        document.getElementById('val-size').innerText = sizeInch + '"' + stepLipText;
+        document.getElementById('val-width').innerText = widthInch + '"';
+        document.getElementById('val-offset').innerText = ((-offsetMm) > 0 ? '+' : '') + (-offsetMm) + 'mm';
+        document.getElementById('val-lip').innerText = lipPercent + '%';
+        document.getElementById('val-thickness').innerText = thicknessVal.toFixed(1);
+        document.getElementById('val-hubsize').innerText = hubSizeVal.toFixed(1) + '"';
+        document.getElementById('val-taper').innerText = taperVal < 40 ? 'Thin Center' : taperVal > 60 ? 'Thick Center' : 'Balanced';
+        document.getElementById('val-lateral').innerText = lateralVal === 0 ? 'None' : (lateralVal > 0 ? 'Right' : 'Left');
+        document.getElementById('val-flare-center').innerText = flareCenterVal === 0 ? 'None' : flareCenterVal < 50 ? 'Subtle' : 'Strong';
+        document.getElementById('val-flare-end').innerText = flareEndVal === 0 ? 'None' : flareEndVal < 50 ? 'Subtle' : 'Strong';
+        
+        const multiPieceGroup = document.getElementById('multipiece-options');
+        if(multiPieceGroup) multiPieceGroup.remove(); // Remove if it exists from old code
+
+        // Build
+        const radius3d = sizeInch / 2;
+        const width3d = widthInch; 
+
+        createRimAndTire(radius3d, width3d, isStepLip, construction, lipPercent);
+        // Get spoke shape from UI
+        const spokeShapeVal = document.getElementById('spokeShape') ? document.getElementById('spokeShape').value : 'rect';
+        createSpokesAndHub({
+            count: spokeCount, rimRadius: radius3d, thickness: thicknessVal,
+            lateralForce: lateralForce, offsetZ: offsetZ,
+            hubSize: hubSizeVal, hubStyle: hubStyleVal, isStepLip: isStepLip, taperPercent: taperVal, lipConcavity: lipPercent, wheelWidth: width3d,
+            spokeShape: spokeShapeVal, flareCenter: flareCenterVal, flareEnd: flareEndVal
+        });
+    }
+
+    // --- 5. FINISH MANAGER ---
+    function applyFinish(type) {
+        document.querySelectorAll('.finish-btn').forEach(b => b.classList.remove('active'));
+        document.getElementById('btn-' + type).classList.add('active');
+        
+        const colorVal = new THREE.Color(document.getElementById('colorPicker').value);
+        const colorContainer = document.querySelector('.color-options');
+
+        let matProps = { envMapIntensity: 1.0, side: THREE.DoubleSide };
+
+        if (type === 'polished') {
+            // Polished finish - only lip (currentFaceMaterial) changes, others stay default
+            const polishedProps = { color: 0xa9a9a9, metalness: 0.8, roughness: 0.5, envMapIntensity: 0.8, side: THREE.DoubleSide };
+            currentFaceMaterial.setValues(polishedProps);
+            currentFaceMaterial.needsUpdate = true;
+            // Reset spokes and barrel to their defaults
+            spokesMaterial.setValues({ color: 0xe0e0e0, metalness: 0.8, roughness: 0.3, envMapIntensity: 0.8, side: THREE.DoubleSide });
+            spokesMaterial.needsUpdate = true;
+            barrelMaterial.setValues({ color: 0xe8e8e8, metalness: 0.95, roughness: 0.12, envMapIntensity: 1.8, side: THREE.DoubleSide });
+            barrelMaterial.needsUpdate = true;
+            colorContainer.style.opacity = '0.5';
+        } else if (type === 'chrome') {
+            matProps = { ...matProps,  color: 0xe0e0e0, metalness: 0.8, roughness: 0.3, envMapIntensity: 0.8 };
+            spokesMaterial.setValues({  color: 0xe0e0e0, metalness: 0.8, roughness: 0.3, envMapIntensity: 0.8, side: THREE.DoubleSide });
+            spokesMaterial.needsUpdate = true;
+            currentFaceMaterial.setValues(matProps);
+            currentFaceMaterial.needsUpdate = true;
+            barrelMaterial.setValues({ color: 0xe8e8e8, metalness: 0.95, roughness: 0.12, envMapIntensity: 1.8, side: THREE.DoubleSide });
+            barrelMaterial.needsUpdate = true;
+            colorContainer.style.opacity = '0.5';
+        } else if (type === 'brushed') {
+            matProps = { ...matProps, color: 0xa9a9a9, metalness: 0.8, roughness: 0.8, envMapIntensity: 0.8 };
+            spokesMaterial.setValues(matProps);
+            spokesMaterial.needsUpdate = true;
+            currentFaceMaterial.setValues(matProps);
+            currentFaceMaterial.needsUpdate = true;
+            barrelMaterial.setValues({ color: 0xe8e8e8, metalness: 0.95, roughness: 0.12, envMapIntensity: 1.8, side: THREE.DoubleSide });
+            barrelMaterial.needsUpdate = true;
+            colorContainer.style.opacity = '0.5';
+        } else if (type === 'matte') {
+            // Only face gets the painted color, others reset to default metallic/grey
+            const matteProps = { color: colorVal, metalness: 0.3, roughness: 0.7, envMapIntensity: 0.5, side: THREE.DoubleSide };
+            currentFaceMaterial.setValues(matteProps);
+            currentFaceMaterial.needsUpdate = true;
+            spokesMaterial.setValues({ color: 0xe8e8e8, metalness: 0.95, roughness: 0.12, envMapIntensity: 1.8, side: THREE.DoubleSide });
+            spokesMaterial.needsUpdate = true;
+            barrelMaterial.setValues({ color: 0xe8e8e8, metalness: 0.95, roughness: 0.12, envMapIntensity: 1.8, side: THREE.DoubleSide});
+            barrelMaterial.needsUpdate = true;
+            colorContainer.style.opacity = '1';
+        }
+    }
+
+    // --- 6. EVENT LISTENERS ---
+    
+    // Attach Finish Buttons Safely
+    document.getElementById('btn-polished').addEventListener('click', () => applyFinish('polished'));
+    document.getElementById('btn-chrome').addEventListener('click', () => applyFinish('chrome'));
+    document.getElementById('btn-brushed').addEventListener('click', () => applyFinish('brushed'));
+    document.getElementById('btn-matte').addEventListener('click', () => applyFinish('matte'));
+
+    // Attach Color Picker
+    document.getElementById('colorPicker').addEventListener('input', (e) => {
+        if(spokesMaterial.roughness > 0.1) { 
+             spokesMaterial.color.set(e.target.value);
+        }
+    });
+
+    // Attach Sliders
+    document.querySelectorAll('input[type=range], input[type=checkbox], input[type=radio], select').forEach(el => {
+        el.addEventListener('input', updateWheel);
+        el.addEventListener('change', updateWheel);
+    });
+
+    window.addEventListener('resize', () => {
+        camera.aspect = container.clientWidth / container.clientHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(container.clientWidth, container.clientHeight);
+    });
+
+    // Animation Loop
+    function animate() {
+        requestAnimationFrame(animate);
+        controls.update();
+        renderer.render(scene, camera);
+    }
+
+    // Init
+    applyFinish('polished'); // Apply polished grey finish first
+    updateWheel();
+    animate();
+
+</script>
+<script>
+    // Mobile menu toggle: clone header nav into mobile menu
+    (function(){
+        const hamburger = document.getElementById('hamburgerBtn');
+        const mobileMenu = document.getElementById('mobileMenu');
+        const mobileNav = document.getElementById('mobileNav');
+        const mobileClose = document.getElementById('mobileMenuClose');
+        const headerNav = document.querySelector('header nav');
+        if(headerNav && mobileNav){
+            mobileNav.innerHTML = headerNav.innerHTML;
+        }
+        function openMenu(){ mobileMenu.classList.add('open'); mobileMenu.setAttribute('aria-hidden','false'); }
+        function closeMenu(){ mobileMenu.classList.remove('open'); mobileMenu.setAttribute('aria-hidden','true'); }
+        if(hamburger) hamburger.addEventListener('click', openMenu);
+        if(mobileClose) mobileClose.addEventListener('click', closeMenu);
+        mobileMenu.addEventListener('click', (e)=>{ if(e.target===mobileMenu) closeMenu(); });
+    })();
+</script>
+    <footer style="width:100vw;text-align:center;padding:18px 0 12px 0;font-size:1rem;color:#888;background:#fafafa;position:relative;bottom:0;left:0;margin-top:32px;">
+        &copy; Powered by Xpose Market
+    </footer>
+</body>
+</html>
